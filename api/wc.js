@@ -9,8 +9,44 @@
 //
 // It makes two upstream calls (standings + matches) and returns one combined
 // JSON payload, so the widget only ever makes a single request.
+//
+// Resilience: the free tier occasionally throws a slow response or a 429. Two
+// layers absorb that so the wall never flashes an error. First, the edge cache
+// keeps serving the last good response (stale-while-revalidate / stale-if-error)
+// for up to a day while it revalidates in the background. Second, a warm
+// instance keeps the last good payload in memory and serves it if an upstream
+// call fails outright.
 
 const BASE = "https://api.football-data.org/v4/competitions/WC";
+
+// Persists across invocations on a warm instance (not guaranteed on cold start,
+// which is why the edge cache header below is the primary safety net).
+let lastGoodPayload = null;
+
+async function fetchCombined(token) {
+  const headers = { "X-Auth-Token": token };
+  const [standingsRes, matchesRes] = await Promise.all([
+    fetch(`${BASE}/standings`, { headers }),
+    fetch(`${BASE}/matches`, { headers }),
+  ]);
+
+  if (!standingsRes.ok || !matchesRes.ok) {
+    const err = new Error("Upstream error from football-data.org");
+    err.standingsStatus = standingsRes.status;
+    err.matchesStatus = matchesRes.status;
+    throw err;
+  }
+
+  const standingsJson = await standingsRes.json();
+  const matchesJson = await matchesRes.json();
+
+  return {
+    fetchedAt: new Date().toISOString(),
+    season: standingsJson.season || null,
+    standings: standingsJson.standings || [],
+    matches: matchesJson.matches || [],
+  };
+}
 
 export default async function handler(req, res) {
   // CORS. The widget reads this from its own origin in the normal case, but
@@ -33,40 +69,33 @@ export default async function handler(req, res) {
     return;
   }
 
-  const headers = { "X-Auth-Token": token };
-
   try {
-    const [standingsRes, matchesRes] = await Promise.all([
-      fetch(`${BASE}/standings`, { headers }),
-      fetch(`${BASE}/matches`, { headers }),
-    ]);
+    const payload = await fetchCombined(token);
+    lastGoodPayload = payload;
 
-    if (!standingsRes.ok || !matchesRes.ok) {
-      // Surface the upstream status so a 403 (bad token) or 429 (rate limit)
-      // is obvious instead of looking like a generic failure.
-      res.status(502).json({
-        error: "Upstream error from football-data.org",
-        standingsStatus: standingsRes.status,
-        matchesStatus: matchesRes.status,
-      });
+    // Edge cache: fresh for 5 minutes, then serve stale for up to a day while
+    // revalidating in the background, and serve stale if a revalidation errors.
+    // This is what masks transient upstream blips from the wall display.
+    res.setHeader(
+      "Cache-Control",
+      "s-maxage=300, stale-while-revalidate=86400, stale-if-error=86400"
+    );
+    res.status(200).json(payload);
+  } catch (err) {
+    // Upstream failed. If this warm instance still holds a good payload, serve
+    // it (marked stale) rather than erroring. Sent no-store so the edge cache
+    // keeps its own, possibly newer, cached copy as the source of truth.
+    if (lastGoodPayload) {
+      res.setHeader("Cache-Control", "no-store");
+      res.status(200).json(Object.assign({ stale: true }, lastGoodPayload));
       return;
     }
-
-    const standingsJson = await standingsRes.json();
-    const matchesJson = await matchesRes.json();
-
-    // Cache at Vercel's edge for 5 minutes, serve stale for up to 10 more while
-    // revalidating. This protects the free-tier limit no matter how often the
-    // widget or Dakboard refreshes.
-    res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-
-    res.status(200).json({
-      fetchedAt: new Date().toISOString(),
-      season: standingsJson.season || null,
-      standings: standingsJson.standings || [],
-      matches: matchesJson.matches || [],
+    res.setHeader("Cache-Control", "no-store");
+    res.status(502).json({
+      error: "Upstream error from football-data.org, and no cached data yet.",
+      standingsStatus: err.standingsStatus,
+      matchesStatus: err.matchesStatus,
+      message: String(err && err.message ? err.message : err),
     });
-  } catch (err) {
-    res.status(500).json({ error: "Proxy failed", message: String(err) });
   }
 }
