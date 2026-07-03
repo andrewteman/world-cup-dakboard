@@ -7,8 +7,8 @@
 // the widget can read it, and edge-caches the result so frequent refreshes (or
 // several displays) never burn through the free tier's 10 requests / minute.
 //
-// It makes two upstream calls (standings + matches) and returns one combined
-// JSON payload, so the widget only ever makes a single request.
+// Knockout-stage version: fetches matches only. The standings call was
+// removed when the group stage ended, halving upstream API usage.
 //
 // Resilience: the free tier occasionally throws a slow response or a 429. Two
 // layers absorb that so the wall never flashes an error. First, the edge cache
@@ -25,25 +25,18 @@ let lastGoodPayload = null;
 
 async function fetchCombined(token) {
   const headers = { "X-Auth-Token": token };
-  const [standingsRes, matchesRes] = await Promise.all([
-    fetch(`${BASE}/standings`, { headers }),
-    fetch(`${BASE}/matches`, { headers }),
-  ]);
+  const matchesRes = await fetch(`${BASE}/matches`, { headers });
 
-  if (!standingsRes.ok || !matchesRes.ok) {
+  if (!matchesRes.ok) {
     const err = new Error("Upstream error from football-data.org");
-    err.standingsStatus = standingsRes.status;
     err.matchesStatus = matchesRes.status;
     throw err;
   }
 
-  const standingsJson = await standingsRes.json();
   const matchesJson = await matchesRes.json();
 
   return {
     fetchedAt: new Date().toISOString(),
-    season: standingsJson.season || null,
-    standings: standingsJson.standings || [],
     matches: matchesJson.matches || [],
   };
 }
@@ -93,7 +86,6 @@ export default async function handler(req, res) {
     res.setHeader("Cache-Control", "no-store");
     res.status(502).json({
       error: "Upstream error from football-data.org, and no cached data yet.",
-      standingsStatus: err.standingsStatus,
       matchesStatus: err.matchesStatus,
       message: String(err && err.message ? err.message : err),
     });
