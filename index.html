@@ -9,13 +9,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 <style>
   /* ------------------------------------------------------------------ */
-  /* CONFIG via URL params (optional). All have sensible defaults:        */
-  /*   ?view=both | fixtures | standings                                  */
-  /*   ?fav=USA,ENG,BRA      highlight + float these teams (TLA codes)     */
+  /* Knockout-stage board: fixtures/scoreboard only.                      */
+  /* CONFIG via URL params (optional):                                    */
+  /*   ?fav=USA,ENG,BRA      highlight these teams (TLA codes)             */
   /*   ?refresh=600          data refresh seconds (default 600 = 10 min)   */
-  /*   ?rotate=14            group rotation seconds (default 14)           */
-  /*   ?groups=3             groups shown per rotation (default 3)         */
-  /* These are read in JS below; CSS just themes everything.              */
   /* ------------------------------------------------------------------ */
 
   :root {
@@ -113,20 +110,17 @@
     100% { box-shadow: 0 0 0 0 rgba(255, 90, 77, 0); }
   }
 
-  /* ---- main grid ---- */
+  /* ---- main ---- */
   main {
     flex: 1; min-height: 0;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: clamp(12px, 1.6vw, 22px);
-  }
-  main.single { grid-template-columns: 1fr; }
-  /* stack when narrow */
-  @media (max-aspect-ratio: 5/4) {
-    main:not(.single) { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    display: flex;
+    justify-content: center;
   }
 
-  .col { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  .col {
+    min-height: 0; display: flex; flex-direction: column; gap: 10px;
+    width: 100%; max-width: 640px;
+  }
   .col-title {
     font-family: "Bricolage Grotesque", sans-serif;
     font-weight: 600;
@@ -177,56 +171,7 @@
   .kick { color: var(--ink-dim); font-weight: 600; }
   .fav .tla { color: var(--accent); }
 
-  /* ---- standings ---- */
-  .standings-wrap { position: relative; flex: 1; min-height: 0; }
-  .groups {
-    display: grid; gap: clamp(8px, 1.2vh, 14px);
-    transition: opacity 0.5s ease;
-  }
-  .groups.fading { opacity: 0; }
-  .grp {
-    background: var(--panel);
-    border: 1px solid var(--hair-soft);
-    border-radius: var(--radius);
-    padding: clamp(8px, 1vh, 12px) clamp(10px, 1.2vw, 15px);
-  }
-  .grp h3 {
-    font-family: "Bricolage Grotesque", sans-serif;
-    font-size: clamp(11px, 1vw, 13px); font-weight: 600;
-    letter-spacing: 0.14em; text-transform: uppercase;
-    color: var(--ink-dim); margin-bottom: 6px;
-  }
-  table { width: 100%; border-collapse: collapse; }
-  thead th {
-    font-size: clamp(8px, 0.8vw, 10px); font-weight: 600;
-    letter-spacing: 0.1em; text-transform: uppercase;
-    color: var(--ink-faint); text-align: right; padding: 2px 4px;
-  }
-  thead th.team { text-align: left; }
-  tbody td {
-    font-size: clamp(11px, 1.25vw, 15px);
-    padding: clamp(3px, 0.6vh, 6px) 4px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    border-top: 1px solid var(--hair-soft);
-  }
-  tbody td.team {
-    text-align: left;
-    display: flex; align-items: center; gap: 8px;
-    font-weight: 600;
-  }
-  tbody td.pts { font-weight: 700; }
-  tbody tr.qual td.team { position: relative; }
-  tbody tr.qual td.team::before {
-    content: ""; position: absolute; left: -10px; top: 50%;
-    transform: translateY(-50%);
-    width: 3px; height: 62%; border-radius: 2px; background: var(--accent);
-  }
-  tbody tr.fav td { color: var(--accent); }
-  .pos { color: var(--ink-faint); width: 1.4em; }
-  .small-crest { width: clamp(15px, 1.6vw, 20px); height: clamp(15px, 1.6vw, 20px); object-fit: contain; }
-
-  /* ---- empty / pre-tournament ---- */
+  /* ---- empty ---- */
   .note {
     background: var(--panel); border: 1px solid var(--hair-soft);
     border-radius: var(--radius); padding: 16px 18px;
@@ -257,12 +202,6 @@
         <div class="col-title">Matches</div>
         <div class="fixtures" id="fixtures"></div>
       </section>
-      <section class="col" id="colStandings">
-        <div class="col-title" id="standingsTitle">Group standings</div>
-        <div class="standings-wrap">
-          <div class="groups" id="groups"></div>
-        </div>
-      </section>
     </main>
   </div>
   <div class="err hide" id="err"></div>
@@ -275,31 +214,19 @@
   var p = new URLSearchParams(location.search);
   var CFG = {
     endpoint: p.get("endpoint") || "/api/wc",
-    view: (p.get("view") || "both").toLowerCase(),       // both | fixtures | standings
     fav: (p.get("fav") || "").toUpperCase().split(",").map(function (s) { return s.trim(); }).filter(Boolean),
-    refreshMs: (parseInt(p.get("refresh"), 10) || 600) * 1000,
-    rotateMs: (parseInt(p.get("rotate"), 10) || 14) * 1000,
-    groupsPerView: parseInt(p.get("groups"), 10) || 3
+    refreshMs: (parseInt(p.get("refresh"), 10) || 600) * 1000
   };
 
   var el = {
-    main: document.getElementById("main"),
     fixtures: document.getElementById("fixtures"),
-    groups: document.getElementById("groups"),
-    colFixtures: document.getElementById("colFixtures"),
-    colStandings: document.getElementById("colStandings"),
-    standingsTitle: document.getElementById("standingsTitle"),
     updated: document.getElementById("updated"),
     livePill: document.getElementById("livePill"),
     liveCount: document.getElementById("liveCount"),
     err: document.getElementById("err")
   };
 
-  // apply view mode
-  if (CFG.view === "fixtures") { el.colStandings.classList.add("hide"); el.main.classList.add("single"); }
-  if (CFG.view === "standings") { el.colFixtures.classList.add("hide"); el.main.classList.add("single"); }
-
-  var state = { groupList: [], rotateIdx: 0, rotateTimer: null, lastGood: null };
+  var state = { lastGood: null };
 
   // ---- helpers ----
   function isFav(tla) { return CFG.fav.indexOf(tla) !== -1; }
@@ -334,274 +261,3 @@
     var dayMs = 86400000;
     var live = [], today = [], recent = [], upcoming = [];
     var todayStr = new Date().toDateString();
-
-    matches.forEach(function (m) {
-      var t = new Date(m.utcDate).getTime();
-      var st = m.status;
-      if (st === "IN_PLAY" || st === "PAUSED") { live.push(m); return; }
-      if (st === "FINISHED") {
-        if (now - t < dayMs) recent.push(m);
-        return;
-      }
-      // SCHEDULED / TIMED
-      if (new Date(m.utcDate).toDateString() === todayStr) { today.push(m); return; }
-      if (t > now) upcoming.push(m);
-    });
-
-    var byDate = function (a, b) { return new Date(a.utcDate) - new Date(b.utcDate); };
-    live.sort(byDate); today.sort(byDate); recent.sort(byDate); upcoming.sort(byDate);
-
-    // priority order, capped to fit a wall tile
-    var ordered = live.concat(today, recent.reverse(), upcoming);
-    // de-dupe by id
-    var seen = {}, out = [];
-    ordered.forEach(function (m) { if (!seen[m.id]) { seen[m.id] = 1; out.push(m); } });
-    return out.slice(0, 8);
-  }
-
-  function statusCell(m) {
-    var st = m.status;
-    if (st === "IN_PLAY") {
-      var min = m.minute ? m.minute + "'" : "LIVE";
-      return '<div class="stat live">' + min + '</div>';
-    }
-    if (st === "PAUSED") return '<div class="stat live">HT</div>';
-    if (st === "FINISHED") return '<div class="stat ft">FT</div>';
-    if (st === "POSTPONED") return '<div class="stat">PPD</div>';
-    if (st === "SUSPENDED") return '<div class="stat live">SUSP</div>';
-    if (st === "CANCELLED") return '<div class="stat">CANC</div>';
-    return '<div class="stat kick">' + timeFmt(m.utcDate) + '</div>';
-  }
-
-  function scoreOrTime(m) {
-    var st = m.status;
-    var played = (st === "IN_PLAY" || st === "PAUSED" || st === "FINISHED");
-    if (played) {
-      var ft = (m.score && m.score.fullTime) || {};
-      var h = (ft.home === null || ft.home === undefined) ? 0 : ft.home;
-      var a = (ft.away === null || ft.away === undefined) ? 0 : ft.away;
-      return '<div class="score">' + h + " &ndash; " + a + '</div>';
-    }
-    return '<div class="score kick">vs</div>';
-  }
-
-  function renderFixtures(matches) {
-    var list = pickFixtures(matches);
-    if (!list.length) {
-      el.fixtures.innerHTML = '<div class="note">No matches in the current window. Fixtures will appear as the schedule approaches.</div>';
-      return;
-    }
-    el.fixtures.innerHTML = list.map(function (m) {
-      var live = (m.status === "IN_PLAY" || m.status === "PAUSED");
-      var hTla = teamTla(m.homeTeam), aTla = teamTla(m.awayTeam);
-      var favRow = (isFav(hTla) || isFav(aTla)) ? " fav" : "";
-      return (
-        '<div class="fx' + (live ? " live" : "") + favRow + '">' +
-          '<div class="side home">' + crestImg(m.homeTeam, "crest") +
-            '<span class="tla' + (isFav(hTla) ? " fav-t" : "") + '">' + hTla + '</span></div>' +
-          '<div class="center">' + scoreOrTime(m) + statusCell(m) + '</div>' +
-          '<div class="side away">' + crestImg(m.awayTeam, "crest") +
-            '<span class="tla' + (isFav(aTla) ? " fav-t" : "") + '">' + aTla + '</span></div>' +
-        '</div>'
-      );
-    }).join("");
-  }
-
-  // ---- standings ----
-  function groupTables(standings) {
-    // keep only TOTAL tables that have a group label, sorted A..Z
-    return standings
-      .filter(function (s) { return s.type === "TOTAL" && s.group; })
-      .sort(function (a, b) { return a.group.localeCompare(b.group); });
-  }
-
-  function hasPlayed(groups) {
-    return groups.some(function (g) {
-      return g.table.some(function (r) { return (r.playedGames || 0) > 0; });
-    });
-  }
-
-  function renderGroupCard(g) {
-    var label = g.group.replace("GROUP_", "Group ");
-    var rows = g.table.map(function (r, i) {
-      var tla = teamTla(r.team);
-      var qual = i < 2 ? " qual" : "";
-      var fav = isFav(tla) ? " fav" : "";
-      var gd = (r.goalDifference > 0 ? "+" : "") + r.goalDifference;
-      return (
-        '<tr class="' + qual.trim() + " " + fav.trim() + '">' +
-          '<td class="team"><span class="pos">' + r.position + '</span>' +
-            crestImg(r.team, "small-crest") + '<span>' + tla + '</span></td>' +
-          '<td>' + r.playedGames + '</td>' +
-          '<td>' + gd + '</td>' +
-          '<td class="pts">' + r.points + '</td>' +
-        '</tr>'
-      );
-    }).join("");
-    return (
-      '<div class="grp"><h3>' + label + '</h3>' +
-        '<table><thead><tr>' +
-          '<th class="team">Team</th><th>P</th><th>GD</th><th>Pts</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table></div>'
-    );
-  }
-
-  function showGroupWindow() {
-    var groups = state.groupList;
-    if (!groups.length) return;
-    var n = CFG.groupsPerView;
-    var slice = [];
-    for (var i = 0; i < Math.min(n, groups.length); i++) {
-      slice.push(groups[(state.rotateIdx + i) % groups.length]);
-    }
-    el.groups.innerHTML = slice.map(renderGroupCard).join("");
-  }
-
-  function rotate() {
-    if (state.groupList.length <= CFG.groupsPerView) return; // nothing to rotate
-    el.groups.classList.add("fading");
-    setTimeout(function () {
-      state.rotateIdx = (state.rotateIdx + CFG.groupsPerView) % state.groupList.length;
-      showGroupWindow();
-      el.groups.classList.remove("fading");
-    }, 500);
-  }
-
-  function renderStandings(standings, matches) {
-    var groups = groupTables(standings);
-    state.groupList = groups;
-    state.rotateIdx = 0;
-
-    if (!groups.length || !hasPlayed(groups)) {
-      // pre-tournament: no useful table yet
-      var firstUpcoming = matches
-        .filter(function (m) { return m.status === "TIMED" || m.status === "SCHEDULED"; })
-        .sort(function (a, b) { return new Date(a.utcDate) - new Date(b.utcDate); })[0];
-      var when = firstUpcoming
-        ? new Date(firstUpcoming.utcDate).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })
-        : "kickoff";
-      el.standingsTitle.textContent = "Group standings";
-      el.groups.innerHTML =
-        '<div class="note">Group tables fill in once the group stage begins. ' +
-        'First match: <b>' + when + '</b>.</div>';
-      if (state.rotateTimer) { clearInterval(state.rotateTimer); state.rotateTimer = null; }
-      return;
-    }
-
-    el.standingsTitle.textContent = "Group standings";
-    showGroupWindow();
-
-    if (state.rotateTimer) clearInterval(state.rotateTimer);
-    if (groups.length > CFG.groupsPerView) {
-      state.rotateTimer = setInterval(rotate, CFG.rotateMs);
-    }
-  }
-
-  // ---- header meta ----
-  function renderMeta(data, matches) {
-    var liveN = matches.filter(function (m) {
-      return m.status === "IN_PLAY" || m.status === "PAUSED";
-    }).length;
-    if (liveN > 0) {
-      el.livePill.classList.add("on");
-      el.liveCount.textContent = liveN;
-    } else {
-      el.livePill.classList.remove("on");
-    }
-    var t = new Date(data.fetchedAt || Date.now());
-    el.updated.textContent = "Updated " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  }
-
-  // ---- fetch + render ----
-  function render(data) {
-    var matches = data.matches || [];
-    renderMeta(data, matches);
-    if (CFG.view !== "standings") renderFixtures(matches);
-    if (CFG.view !== "fixtures") renderStandings(data.standings || [], matches);
-  }
-
-  // ---- persistence: survive iframe reloads during an outage ----
-  // Dakboard reloads the whole iframe on its own interval, which wipes the
-  // in-memory state. Caching the last good payload in localStorage means a
-  // cold reload during an upstream blip still paints the last known board
-  // instead of a blank error.
-  var LS_KEY = "wc:lastGood";
-  function saveGood(data) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) {}
-  }
-  function loadGood() {
-    try {
-      var raw = localStorage.getItem(LS_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) { return null; }
-  }
-
-  // ---- fetch with retry + graceful fallback ----
-  var RETRY_ATTEMPTS = 3;     // tries within one refresh cycle
-  var RETRY_GAP_MS = 4000;    // gap between tries in a cycle
-  var FAIL_RETRY_MS = 60000;  // after a fully failed cycle, retry in 1 min, not 10
-  var refreshTimer = null;
-
-  function fetchOnce() {
-    return fetch(CFG.endpoint, { cache: "no-store" })
-      .then(function (r) {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        if (data.error) throw new Error(data.error);
-        return data;
-      });
-  }
-
-  function attempt(triesLeft) {
-    return fetchOnce().catch(function (e) {
-      if (triesLeft > 1) {
-        return new Promise(function (res) { setTimeout(res, RETRY_GAP_MS); })
-          .then(function () { return attempt(triesLeft - 1); });
-      }
-      throw e;
-    });
-  }
-
-  function schedule(ms) {
-    if (refreshTimer) clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(load, ms);
-  }
-
-  function load() {
-    attempt(RETRY_ATTEMPTS)
-      .then(function (data) {
-        state.lastGood = data;
-        saveGood(data);
-        el.err.classList.add("hide");
-        render(data);
-        schedule(CFG.refreshMs);
-      })
-      .catch(function () {
-        // a whole cycle failed. fall back to last known data from anywhere
-        // (memory or storage) rather than parking an error on the wall.
-        var fallback = state.lastGood || loadGood();
-        if (fallback) {
-          state.lastGood = fallback;
-          render(fallback);
-          el.err.textContent = "Reconnecting";
-          el.err.classList.remove("hide");
-        } else {
-          el.err.classList.add("hide");
-          el.fixtures.innerHTML = '<div class="note">Could not reach the data endpoint (<b>' +
-            CFG.endpoint + '</b>). Check the proxy is deployed and the token is set.</div>';
-        }
-        schedule(FAIL_RETRY_MS);
-      });
-  }
-
-  // paint cached data instantly so a cold reload is never blank, then refresh
-  var cached = loadGood();
-  if (cached) { state.lastGood = cached; render(cached); }
-
-  load();
-})();
-</script>
-</body>
-</html>
