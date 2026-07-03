@@ -28,7 +28,7 @@
     --live: #ff5a4d;
     --gold: #ffd66b;
     --radius: 14px;
-    --pad: clamp(14px, 2.2vw, 26px);
+    --pad: clamp(16px, 2vw, 26px);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -60,7 +60,7 @@
     display: flex;
     flex-direction: column;
     padding: var(--pad);
-    gap: clamp(10px, 1.6vh, 18px);
+    gap: clamp(12px, 1.4vh, 18px);
     opacity: 0;
     animation: rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
   }
@@ -76,7 +76,7 @@
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 0.92;
-    font-size: clamp(20px, 3.6vw, 40px);
+    font-size: clamp(24px, 3.2vw, 40px);
     display: flex; align-items: center; gap: 0.5ch;
   }
   .wordmark .yr {
@@ -88,7 +88,7 @@
   }
   .meta {
     display: flex; align-items: center; gap: 14px;
-    font-size: clamp(10px, 1vw, 13px);
+    font-size: clamp(11px, 0.9vw, 13px);
     color: var(--ink-dim);
     text-transform: uppercase; letter-spacing: 0.12em;
     font-weight: 600;
@@ -121,7 +121,7 @@
   .col-title {
     font-family: "Bricolage Grotesque", sans-serif;
     font-weight: 600;
-    font-size: clamp(11px, 1.1vw, 14px);
+    font-size: clamp(12px, 1vw, 14px);
     letter-spacing: 0.16em; text-transform: uppercase;
     color: var(--ink-dim);
     display: flex; align-items: center; gap: 10px;
@@ -138,28 +138,28 @@
     background: var(--panel);
     border: 1px solid var(--hair-soft);
     border-radius: var(--radius);
-    padding: clamp(8px, 1.1vh, 13px) clamp(10px, 1.2vw, 16px);
+    padding: clamp(10px, 1vh, 13px) clamp(12px, 1.1vw, 16px);
   }
   .fx.live { border-color: rgba(255, 90, 77, 0.45); background: rgba(255, 90, 77, 0.06); }
   .fx .side { display: flex; align-items: center; gap: 9px; min-width: 0; }
   .fx .side.away { justify-content: flex-end; flex-direction: row-reverse; }
-  .crest { width: clamp(18px, 1.9vw, 26px); height: clamp(18px, 1.9vw, 26px); object-fit: contain; flex: none; }
+  .crest { width: clamp(20px, 1.7vw, 26px); height: clamp(20px, 1.7vw, 26px); object-fit: contain; flex: none; }
   .tla {
     font-weight: 700; letter-spacing: 0.02em;
-    font-size: clamp(13px, 1.5vw, 18px);
+    font-size: clamp(14px, 1.35vw, 18px);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .fx .center { text-align: center; min-width: clamp(56px, 7vw, 84px); }
   .score {
     font-family: "IBM Plex Mono", monospace; font-weight: 600;
     font-variant-numeric: tabular-nums;
-    font-size: clamp(16px, 2vw, 24px);
+    font-size: clamp(18px, 1.8vw, 24px);
     line-height: 1;
   }
   .fx.live .score { color: var(--ink); }
   .stat {
     margin-top: 3px;
-    font-size: clamp(9px, 0.85vw, 11px);
+    font-size: clamp(10px, 0.75vw, 11px);
     letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--ink-faint); font-weight: 600;
   }
@@ -168,11 +168,18 @@
   .kick { color: var(--ink-dim); font-weight: 600; }
   .fav .tla { color: var(--accent); }
 
+  /* below this, drop crests and tighten gaps rather than keep shrinking text */
+  @media (max-width: 360px) {
+    .crest { display: none; }
+    .fx { gap: 6px; }
+    .fx .center { min-width: 48px; }
+  }
+
   /* ---- empty ---- */
   .note {
     background: var(--panel); border: 1px solid var(--hair-soft);
     border-radius: var(--radius); padding: 16px 18px;
-    color: var(--ink-dim); font-size: clamp(12px, 1.2vw, 15px);
+    color: var(--ink-dim); font-size: clamp(13px, 1.1vw, 15px);
     line-height: 1.5;
   }
   .note b { color: var(--ink); font-weight: 700; }
